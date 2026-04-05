@@ -1,0 +1,17 @@
+{
+  "name": "ep_checklist_bot",
+  "version": "1.0.0",
+  "description": "Чеклист",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "grammy": "^1.41.1",
+    "nodemon": "^3.1.14"
+  }
+}
