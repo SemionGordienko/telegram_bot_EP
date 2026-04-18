@@ -84,7 +84,11 @@ bot.use(session({
         feedback: false,
         selectedOffice: [],
         officeName: '',
-        checklistName: ''
+        checklistName: '',
+        photos: [],
+        waitingText: false,
+        waitingStep: null,
+        waitingMorePhotos: false,
     })
 }));
 
@@ -123,61 +127,81 @@ bot.command('checklist', async (ctx) => {
     ctx.session.albumTimeout = null;
     ctx.session.name = ctx.from.first_name;
     ctx.session.waitingPhoto = false;
+    ctx.session.waitingText = false;
+    ctx.session.waitingStep = null;
+    ctx.session.waitingMorePhotos = false;
     ctx.session.selectedOffice = [];
+    ctx.session.officeName = '';
+    ctx.session.checklistName = '';
+    ctx.session.photos = [];
 
-    const greetKeyboard = new InlineKeyboard()
-        .text('ЕП1', 'office_1')
-        .text('ЕП2', 'office_2')
-        .text('ЕП3', 'office_3')
-        .text('ЕП4','office_4')
-        .text('ЕП5','office_5')
-    await ctx.reply('Выбери филлиал', {
-        reply_markup: greetKeyboard,
-    });
+    await ctx.reply('Введите абривиатуру филлиала с номером');
 });
-
-bot.callbackQuery(/^office_/, async (ctx) => {
-    const dataO = ctx.callbackQuery.data;
-    const officeKey = dataO.replace('office_','');
-    ctx.session.selectedOffice = officeKey;
-    ctx.session.officeName = 'Офис: ЕП'+ officeKey
-
-    const keyboard = new InlineKeyboard()
-        .text('Утренний', `form_morning_EP${officeKey}`)
-        .text('Вечер Рук.ф', `form_eveningH_EP${officeKey}`)
-        .text('Вечер Оператор', `form_eveningO_EP${officeKey}`);
-
-    await ctx.answerCallbackQuery();
-
-    await ctx.reply('Выбери чек-лист', {
-        reply_markup: keyboard,
-    });
-})
 
 bot.callbackQuery(/^form_/, async (ctx) => {
     const data = ctx.callbackQuery.data;
+
     const formKey = data.replace('form_', '');
     const selectedForm = forms[formKey];
-    ctx.session.checklistName = selectedForm.title;
+
+    function shuffleArray(array) {
+        const result = [...array];
+
+        for (let i = result.length - 1; i > 0; i--) {
+            const randomIndex = Math.floor(Math.random() * (i + 1));
+            const temp = result[i];
+            result[i] = result[randomIndex];
+            result[randomIndex] = temp;
+        }
+
+        return result;
+    }
 
     if (!selectedForm || !selectedForm.questions || !selectedForm.questions.length) {
         await ctx.answerCallbackQuery();
         return;
     }
 
-    ctx.session.currentForm = selectedForm;
+    const shuffledQuestions = shuffleArray(selectedForm.questions).map((question) => {
+        return {
+            ...question,
+            answers: shuffleArray(question.answers)
+        };
+    });
+
+    ctx.session.currentForm = {
+        ...selectedForm,
+        questions: shuffledQuestions
+    };
+
     ctx.session.answers = [];
     ctx.session.step = 0;
     ctx.session.waitingPhoto = false;
+    ctx.session.waitingText = false;
+    ctx.session.waitingStep = null;
+    ctx.session.waitingMorePhotos = false;
+    ctx.session.checklistName = selectedForm.title;
 
     await ctx.answerCallbackQuery();
 
+    const firstQuestion = ctx.session.currentForm.questions[0];
+
+    if (firstQuestion.type === 'text') {
+        ctx.session.waitingText = true;
+        ctx.session.waitingStep = 0;
+
+        await ctx.reply(firstQuestion.question);
+        return;
+    }
+
     await ctx.reply(
-        selectedForm.questions[0].question,
+        firstQuestion.question,
         {
-            reply_markup: createKeyboard(0, selectedForm)
+            reply_markup: createKeyboard(0, ctx.session.currentForm)
         }
     );
+
+    return;
 });
 
 bot.callbackQuery(/^answer_/, async (ctx) => {
@@ -207,13 +231,13 @@ bot.callbackQuery(/^answer_/, async (ctx) => {
 
     if (ctx.session.step >= currentForm.questions.length) {
         ctx.session.waitingPhoto = true;
-        await ctx.reply('Анкета завершена. Приложи фото, без текста');
+        await ctx.reply('Вопросы завершены. Приложи фото результатов, без текста');
         return;
     }
 
     const nextQuestion = currentForm.questions[ctx.session.step];
 
-    if (currentForm.title === 'Вечерний чек-лист №1' && ctx.session.step === 4) {
+    if (nextQuestion.type === 'text') {
         ctx.session.waitingText = true;
         ctx.session.waitingStep = ctx.session.step;
 
@@ -222,48 +246,154 @@ bot.callbackQuery(/^answer_/, async (ctx) => {
     }
 
     await ctx.reply(
-        currentForm.questions[ctx.session.step].question,
+        nextQuestion.question,
         {
             reply_markup: createKeyboard(ctx.session.step, currentForm)
         }
     );
 });
 
-bot.on('message:text', async (ctx) => {
-    if (!ctx.session.waitingText && ctx.session.feedback) {
-        const feedback = ctx.message.text;
-        await bot.api.sendMessage(adminID, `Пользователь ${ctx.from.first_name} написал: ${feedback}`)
-        ctx.session.feedback = false;
-    }
+bot.callbackQuery(/^photo_/, async (ctx) => {
+    const data = ctx.callbackQuery.data;
 
-    const step = ctx.session.waitingStep;
+    await ctx.answerCallbackQuery();
 
-    ctx.session.answers[step] = ctx.message.text;
-    ctx.session.waitingText = false;
-    ctx.session.waitingStep = null;
-
-    const currentForm = ctx.session.currentForm;
-
-    if (currentForm.title === 'Вечерний чек-лист №1' && step === 4) {
-        ctx.session.waitingPhoto = true;
-        await ctx.reply('Анкета завершена. Приложи фото, без текста');
+    if (!ctx.session.waitingMorePhotos) {
         return;
     }
 
-    ctx.session.step += 1;
-
-    if (ctx.session.step >= currentForm.questions.length) {
+    if (data === 'photo_more') {
         ctx.session.waitingPhoto = true;
-        await ctx.reply('Анкета завершена. Приложи фото, без текста');
+        ctx.session.waitingMorePhotos = false;
+
+        await ctx.reply('Пришли еще фото');
         return;
     }
 
-    await ctx.reply(
-        currentForm.questions[ctx.session.step].question,
-        {
-            reply_markup: createKeyboard(ctx.session.step, currentForm)
+    if (data === 'photo_finish') {
+        const currentForm = ctx.session.currentForm;
+        const answers = ctx.session.answers;
+        const photos = ctx.session.photos;
+
+        if (!currentForm || !currentForm.questions || !currentForm.questions.length) {
+            return;
         }
-    );
+
+        const text = currentForm.questions
+            .map((item, index) => {
+                const generalQuestion = item.generalQuestion;
+                const answer = answers[index] || 'Нет ответа';
+
+                return `${generalQuestion} ${answer}`;
+            })
+            .join('\n');
+
+        if (!photos || !photos.length) {
+            await ctx.reply('Фото не найдены');
+            return;
+        }
+
+        const chunks = [];
+
+        for (let i = 0; i < photos.length; i += 10) {
+            chunks.push(photos.slice(i, i + 10));
+        }
+
+        for (const chunk of chunks) {
+            if (chunk.length === 1) {
+                await bot.api.sendPhoto(ctx.from.id, chunk[0]);
+            } else {
+                await bot.api.sendMediaGroup(
+                    ctx.from.id,
+                    chunk.map((photoId) => ({
+                        type: 'photo',
+                        media: photoId
+                    }))
+                );
+            }
+        }
+
+        await bot.api.sendMessage(
+            ctx.from.id,
+            `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n\n${text}`
+        );
+        await ctx.reply('Анкета завершена!')
+
+        ctx.session.step = null;
+        ctx.session.currentForm = null;
+        ctx.session.answers = [];
+        ctx.session.albums = {};
+        ctx.session.albumTimeout = null;
+        ctx.session.waitingPhoto = false;
+        ctx.session.waitingMorePhotos = false;
+        ctx.session.officeName = '';
+        ctx.session.checklistName = '';
+        ctx.session.photos = [];
+    }
+});
+
+bot.on('message:text', async (ctx) => {
+    if (ctx.session.feedback) {
+        const feedback = ctx.message.text;
+        await bot.api.sendMessage(adminID, `Пользователь ${ctx.from.first_name} написал: ${feedback}`);
+        ctx.session.feedback = false;
+        return;
+    }
+
+    if (ctx.session.waitingText) {
+        const step = ctx.session.waitingStep;
+        const currentForm = ctx.session.currentForm;
+
+        if (!currentForm || step === null) {
+            return;
+        }
+
+        ctx.session.answers[step] = ctx.message.text;
+        ctx.session.waitingText = false;
+        ctx.session.waitingStep = null;
+        ctx.session.step += 1;
+
+        if (ctx.session.step >= currentForm.questions.length) {
+            ctx.session.waitingPhoto = true;
+            await ctx.reply('Вопросы завершены. Приложи фото с результатами, без текста');
+            return;
+        }
+
+        const nextQuestion = currentForm.questions[ctx.session.step];
+
+        if (nextQuestion.type === 'text') {
+            ctx.session.waitingText = true;
+            ctx.session.waitingStep = ctx.session.step;
+
+            await ctx.reply(nextQuestion.question);
+            return;
+        }
+
+        await ctx.reply(
+            nextQuestion.question,
+            {
+                reply_markup: createKeyboard(ctx.session.step, currentForm)
+            }
+        );
+        return;
+    }
+
+    const text = ctx.message.text.trim().toLowerCase();
+
+    if (text.length === 3 && text.startsWith('еп')) {
+        const officeKey = text[2];
+        ctx.session.selectedOffice = officeKey;
+        ctx.session.officeName = 'Офис: ЕП' + officeKey;
+
+        const keyboard = new InlineKeyboard()
+            .text('Утренний', `form_morning_EP${officeKey}`)
+            .text('Вечер Рук.ф', `form_eveningH_EP${officeKey}`)
+            .text('Вечер Оператор', `form_eveningO_EP${officeKey}`);
+
+        await ctx.reply('Выбери чек-лист', {
+            reply_markup: keyboard,
+        });
+    }
 });
 
 bot.on('message:photo', async (ctx) => {
@@ -271,15 +401,8 @@ bot.on('message:photo', async (ctx) => {
         return;
     }
 
-    const currentForm = ctx.session.currentForm;
-    const answers = ctx.session.answers;
-
-    if (!currentForm || !currentForm.questions || !currentForm.questions.length) {
-        return;
-    }
-
-    const groupID = ctx.message.media_group_id || `single_${ctx.message.message_id}`;
     const fileID = ctx.message.photo.at(-1).file_id;
+    const groupID = ctx.message.media_group_id || `single_${ctx.message.message_id}`;
 
     if (!ctx.session.albums[groupID]) {
         ctx.session.albums[groupID] = [];
@@ -295,47 +418,25 @@ bot.on('message:photo', async (ctx) => {
         try {
             const photos = ctx.session.albums[groupID];
 
-            const text = currentForm.questions
-                .map((item, index) => {
-                    const generalQuestion = item.generalQuestion;
-                    const answer = answers[index] || 'Нет ответа';
-
-                    return `${generalQuestion} ${answer}`;
-                })
-                .join('\n');
-
             if (!photos || !photos.length) {
                 await ctx.reply('Фото не найдены');
                 return;
             }
 
-            if (photos.length === 1) {
-                await bot.api.sendPhoto(ctx.from.id, photos[0]);
-            } else {
-                await bot.api.sendMediaGroup(
-                    ctx.from.id,
-                    photos.map((photoId) => ({
-                        type: 'photo',
-                        media: photoId
-                    }))
-                );
-            }
-
-            await bot.api.sendMessage(
-                ctx.from.id,
-                `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n\n${text},`
-            );
-
+            ctx.session.photos.push(...photos);
             delete ctx.session.albums[groupID];
             ctx.session.albumTimeout = null;
-            ctx.session.step = null;
-            ctx.session.currentForm = null;
-            ctx.session.answers = [];
-            ctx.session.waitingPhoto = false;
-            ctx.session.officeName = '';
-            ctx.session.checklistName = '';
+            ctx.session.waitingMorePhotos = true;
+
+            const photoKeyboard = new InlineKeyboard()
+                .text('Еще фото', 'photo_more')
+                .text('Завершить', 'photo_finish');
+
+            await ctx.reply('Фото получены. Будут еще?', {
+                reply_markup: photoKeyboard
+            });
         } catch (error) {
-            await ctx.reply('Ошибка при отправке фото, сообщить СГ');
+            await ctx.reply('Ошибка при обработке фото, сообщить СГ');
         }
     }, 1500);
 });
