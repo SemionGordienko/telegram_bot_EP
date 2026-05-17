@@ -1,9 +1,13 @@
 require('dotenv').config();
+const checklistDbMap = require('./dbMap.json');
+
 const { Bot, GrammyError, HttpError, InlineKeyboard, session } = require('grammy');
+const sql = require('mssql');
 
 const bot = new Bot(process.env.BOT_API_KEY);
 
 const adminID = 192403374;
+
 const morning_EP1 = require('./json_qs/morning_EP1.json');
 const eveningH_EP1 = require('./json_qs/eveningH_EP1.json');
 const eveningO_EP1 = require('./json_qs/eveningO_EP1.json');
@@ -23,6 +27,18 @@ const eveningO_EP4 = require('./json_qs/eveningO_EP4.json');
 const morning_EP5 = require('./json_qs/morning_EP5.json');
 const eveningH_EP5 = require('./json_qs/eveningH_EP5.json');
 const eveningO_EP5 = require('./json_qs/eveningO_EP5.json');
+
+const config = {
+    user: 'sa',
+    password: '12345678sL',
+    server: 'localhost',
+    database: 'DemoTest',
+    port: 1433,
+    options: {
+        encrypt: false,
+        trustServerCertificate: true,
+    },
+};
 
 const forms = {
     morning_EP1: morning_EP1,
@@ -57,19 +73,102 @@ function createKeyboard(step, currentForm) {
     return keyboard;
 }
 
+function getAnswerByQuestionId(currentForm, answers, questionId) {
+    const questionIndex = currentForm.questions.findIndex((question) => {
+        return question.id === questionId;
+    });
+
+    if (questionIndex === -1) {
+        return 'Нет ответа';
+    }
+
+    return answers[questionIndex] || 'Нет ответа';
+}
+
+async function saveChecklistToDb(ctx) {
+    const currentForm = ctx.session.currentForm;
+    const answers = ctx.session.answers;
+    const formKey = ctx.session.formKey;
+
+    const dbConfig = checklistDbMap[formKey];
+
+    if (!dbConfig) {
+        throw new Error(`Не найден конфиг БД для анкеты: ${formKey}`);
+    }
+
+    const pool = await sql.connect(config);
+
+    const checklistRequest = pool.request();
+
+    checklistRequest.input('name', sql.NVarChar(100), ctx.session.name);
+    checklistRequest.input('date', sql.NVarChar(50), new Date().toLocaleDateString('ru-RU'));
+    checklistRequest.input('officeName', sql.NVarChar(50), ctx.session.officeName);
+    checklistRequest.input('checklistName', sql.NVarChar(100), ctx.session.checklistName);
+    checklistRequest.input('formKey', sql.NVarChar(50), formKey);
+
+    const checklistResult = await checklistRequest.query(`
+        INSERT INTO Checklists (
+            name,
+            [date],
+            officeName,
+            checklistName,
+            formKey
+        )
+        OUTPUT INSERTED.id
+        VALUES (
+            @name,
+            @date,
+            @officeName,
+            @checklistName,
+            @formKey
+        )
+    `);
+
+    const checklistId = checklistResult.recordset[0].id;
+
+    const answersRequest = pool.request();
+
+    answersRequest.input('checklistId', sql.Int, checklistId);
+
+    const columns = ['checklistId'];
+    const values = ['@checklistId'];
+
+    Object.entries(dbConfig.columns).forEach(([questionId, columnName]) => {
+        const value = getAnswerByQuestionId(currentForm, answers, Number(questionId));
+
+        answersRequest.input(columnName, sql.NVarChar(255), value);
+
+        columns.push(columnName);
+        values.push(`@${columnName}`);
+    });
+
+    await answersRequest.query(`
+        INSERT INTO ${dbConfig.tableName} (
+            ${columns.join(',\n            ')}
+        )
+        VALUES (
+            ${values.join(',\n            ')}
+        )
+    `);
+}
+
 bot.api.setMyCommands([
     {
-        command: 'start', description: 'Запуск бота'
+        command: 'start',
+        description: 'Запуск бота',
     },
     {
-        command: 'checklist', description: 'Заполнение чеклиста'
+        command: 'checklist',
+        description: 'Заполнение чеклиста',
     },
     {
-        command: 'portal', description: 'Портал с личным кабинетом'
+        command: 'portal',
+        description: 'Портал с личным кабинетом',
     },
     {
-        command: 'feedback', description: 'Дать фидбек'
-    }
+        command: 'feedback',
+        description: 'Дать фидбек',
+    },
 ]);
 
 bot.use(session({
@@ -86,16 +185,17 @@ bot.use(session({
         officeName: '',
         checklistName: '',
         photos: [],
+        formKey: '',
         waitingText: false,
         waitingStep: null,
         waitingMorePhotos: false,
-    })
+    }),
 }));
 
 bot.command('feedback', async (ctx) => {
     await ctx.reply('Опишите фидбек в одном сообщении.');
     ctx.session.feedback = true;
-})
+});
 
 bot.command('start', async (ctx) => {
     const username = ctx.from.username;
@@ -120,12 +220,13 @@ bot.command('portal', async (ctx) => {
 });
 
 bot.command('checklist', async (ctx) => {
-    ctx.session.step = null;
+    ctx.session.step = 'waiting_name';
     ctx.session.currentForm = null;
+    ctx.session.formKey = '';
     ctx.session.answers = [];
     ctx.session.albums = {};
     ctx.session.albumTimeout = null;
-    ctx.session.name = ctx.from.first_name;
+    ctx.session.name = '';
     ctx.session.waitingPhoto = false;
     ctx.session.waitingText = false;
     ctx.session.waitingStep = null;
@@ -135,14 +236,27 @@ bot.command('checklist', async (ctx) => {
     ctx.session.checklistName = '';
     ctx.session.photos = [];
 
-    await ctx.reply('Введите абривиатуру филлиала с номером');
+    await ctx.reply('Кто заполняет анкету? Фамилия + имя');
 });
 
 bot.callbackQuery(/^form_/, async (ctx) => {
     const data = ctx.callbackQuery.data;
 
     const formKey = data.replace('form_', '');
+    ctx.session.formKey = formKey;
     const selectedForm = forms[formKey];
+
+    if (formKey.startsWith('morning_')) {
+        ctx.session.checklistName = 'Утренняя анкета';
+    }   
+
+    if (formKey.startsWith('eveningH_')) {
+        ctx.session.checklistName = 'Вечерняя анкета рук.ф';
+    }
+
+    if (formKey.startsWith('eveningO_')) {
+        ctx.session.checklistName = 'Вечерняя анкета оператора';
+    }
 
     function shuffleArray(array) {
         const result = [...array];
@@ -150,6 +264,7 @@ bot.callbackQuery(/^form_/, async (ctx) => {
         for (let i = result.length - 1; i > 0; i--) {
             const randomIndex = Math.floor(Math.random() * (i + 1));
             const temp = result[i];
+
             result[i] = result[randomIndex];
             result[randomIndex] = temp;
         }
@@ -165,13 +280,13 @@ bot.callbackQuery(/^form_/, async (ctx) => {
     const shuffledQuestions = shuffleArray(selectedForm.questions).map((question) => {
         return {
             ...question,
-            answers: shuffleArray(question.answers)
+            answers: shuffleArray(question.answers),
         };
     });
 
     ctx.session.currentForm = {
         ...selectedForm,
-        questions: shuffledQuestions
+        questions: shuffledQuestions,
     };
 
     ctx.session.answers = [];
@@ -197,11 +312,9 @@ bot.callbackQuery(/^form_/, async (ctx) => {
     await ctx.reply(
         firstQuestion.question,
         {
-            reply_markup: createKeyboard(0, ctx.session.currentForm)
+            reply_markup: createKeyboard(0, ctx.session.currentForm),
         }
     );
-
-    return;
 });
 
 bot.callbackQuery(/^answer_/, async (ctx) => {
@@ -224,7 +337,7 @@ bot.callbackQuery(/^answer_/, async (ctx) => {
     const answerIndex = Number(data.replace('answer_', ''));
     const selectedAnswer = currentQuestion.answers[answerIndex];
 
-    ctx.session.answers.push(selectedAnswer);
+    ctx.session.answers[step] = selectedAnswer;
     ctx.session.step += 1;
 
     await ctx.answerCallbackQuery();
@@ -248,7 +361,7 @@ bot.callbackQuery(/^answer_/, async (ctx) => {
     await ctx.reply(
         nextQuestion.question,
         {
-            reply_markup: createKeyboard(ctx.session.step, currentForm)
+            reply_markup: createKeyboard(ctx.session.step, currentForm),
         }
     );
 });
@@ -307,7 +420,7 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
                     ctx.from.id,
                     chunk.map((photoId) => ({
                         type: 'photo',
-                        media: photoId
+                        media: photoId,
                     }))
                 );
             }
@@ -317,7 +430,20 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
             ctx.from.id,
             `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n\n${text}`
         );
-        await ctx.reply('Анкета завершена!')
+        await bot.api.sendMessage(
+            adminID,
+            `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n`
+        );
+
+        try {
+            await saveChecklistToDb(ctx);
+        } catch (error) {
+            console.log(error);
+            await ctx.reply('Ошибка при сохранении в базу');
+            return;
+        }
+
+        await ctx.reply('Анкета завершена!');
 
         ctx.session.step = null;
         ctx.session.currentForm = null;
@@ -328,6 +454,7 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
         ctx.session.waitingMorePhotos = false;
         ctx.session.officeName = '';
         ctx.session.checklistName = '';
+        ctx.session.formKey = '';
         ctx.session.photos = [];
     }
 });
@@ -335,8 +462,28 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
 bot.on('message:text', async (ctx) => {
     if (ctx.session.feedback) {
         const feedback = ctx.message.text;
-        await bot.api.sendMessage(adminID, `Пользователь ${ctx.from.first_name} написал: ${feedback}`);
+
+        await bot.api.sendMessage(
+            adminID,
+            `Пользователь ${ctx.from.first_name} написал: ${feedback}`
+        );
+
         ctx.session.feedback = false;
+        return;
+    }
+
+    if (ctx.session.step === 'waiting_name') {
+        const name = ctx.message.text.trim();
+
+        if (!name) {
+            await ctx.reply('Введите фамилию и имя');
+            return;
+        }
+
+        ctx.session.name = name;
+        ctx.session.step = 'waiting_office';
+
+        await ctx.reply('Введите абривиатуру филлиала с номером');
         return;
     }
 
@@ -372,9 +519,14 @@ bot.on('message:text', async (ctx) => {
         await ctx.reply(
             nextQuestion.question,
             {
-                reply_markup: createKeyboard(ctx.session.step, currentForm)
+                reply_markup: createKeyboard(ctx.session.step, currentForm),
             }
         );
+
+        return;
+    }
+
+    if (ctx.session.step !== 'waiting_office') {
         return;
     }
 
@@ -382,6 +534,7 @@ bot.on('message:text', async (ctx) => {
 
     if (text.length === 3 && text.startsWith('еп')) {
         const officeKey = text[2];
+
         ctx.session.selectedOffice = officeKey;
         ctx.session.officeName = 'Офис: ЕП' + officeKey;
 
@@ -393,7 +546,11 @@ bot.on('message:text', async (ctx) => {
         await ctx.reply('Выбери чек-лист', {
             reply_markup: keyboard,
         });
+
+        return;
     }
+
+    await ctx.reply('Введите филиал в формате: еп1, еп2, еп3, еп4 или еп5');
 });
 
 bot.on('message:photo', async (ctx) => {
@@ -424,8 +581,11 @@ bot.on('message:photo', async (ctx) => {
             }
 
             ctx.session.photos.push(...photos);
+
             delete ctx.session.albums[groupID];
+
             ctx.session.albumTimeout = null;
+            ctx.session.waitingPhoto = false;
             ctx.session.waitingMorePhotos = true;
 
             const photoKeyboard = new InlineKeyboard()
@@ -433,9 +593,10 @@ bot.on('message:photo', async (ctx) => {
                 .text('Завершить', 'photo_finish');
 
             await ctx.reply('Фото получены. Будут еще?', {
-                reply_markup: photoKeyboard
+                reply_markup: photoKeyboard,
             });
         } catch (error) {
+            console.log(error);
             await ctx.reply('Ошибка при обработке фото, сообщить СГ');
         }
     }, 1500);
@@ -443,7 +604,9 @@ bot.on('message:photo', async (ctx) => {
 
 bot.catch((err) => {
     const ctx = err.ctx;
+
     console.error(`Error while handling update ${ctx.update.update_id}:`);
+
     const e = err.error;
 
     if (e instanceof GrammyError) {

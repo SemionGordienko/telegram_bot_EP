@@ -12,6 +12,7 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "grammy": "^1.41.1",
+    "mssql": "^12.5.4",
     "nodemon": "^3.1.14"
   }
 }

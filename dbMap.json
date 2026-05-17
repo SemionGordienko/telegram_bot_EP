@@ -1,0 +1,203 @@
+{
+  "morning_EP1": {
+    "tableName": "MorningEP1Checklist",
+    "columns": {
+      "1": "counterClean",
+      "2": "benchClean",
+      "3": "clientTableClean",
+      "4": "tvSlideshow",
+      "5": "tasksCheck",
+      "6": "consumablesCheck",
+      "7": "paymentsCheck",
+      "8": "badgeCheck",
+      "9": "telegramMaxCheck",
+      "10": "phonesVolume",
+      "11": "advertisingMaterials",
+      "12": "towelsCheck"
+    }
+  },
+  "morning_EP2": {
+    "tableName": "MorningEP2Checklist",
+    "columns": {
+      "1": "counterClean",
+      "2": "benchClean",
+      "3": "clientTableClean",
+      "4": "humidifierCheck",
+      "5": "consumablesCheck",
+      "6": "paymentsCheck",
+      "7": "tasksCheck",
+      "8": "badgeCheck",
+      "9": "whatsappCheck",
+      "10": "phonesVolume",
+      "11": "advertisingMaterials",
+      "12": "towelsCheck"
+    }
+  },
+  "morning_EP3": {
+    "tableName": "MorningEP3Checklist",
+    "columns": {
+      "1": "counterClean",
+      "2": "benchClean",
+      "3": "clientTableClean",
+      "4": "tvSlideshow",
+      "5": "tasksCheck",
+      "6": "consumablesCheck",
+      "7": "paymentsCheck",
+      "8": "badgeCheck",
+      "9": "whatsappCheck",
+      "10": "phonesVolume",
+      "11": "advertisingMaterials",
+      "12": "towelsCheck"
+    }
+  },
+  "morning_EP4": {
+    "tableName": "MorningEP4Checklist",
+    "columns": {
+      "1": "counterClean",
+      "2": "benchClean",
+      "3": "clientTableClean",
+      "4": "chalkboardClean",
+      "5": "tasksCheck",
+      "6": "consumablesCheck",
+      "7": "paymentsCheck",
+      "8": "badgeCheck",
+      "9": "whatsappCheck",
+      "10": "phonesVolume",
+      "11": "advertisingMaterials",
+      "12": "towelsCheck"
+    }
+  },
+  "morning_EP5": {
+    "tableName": "MorningEP5Checklist",
+    "columns": {
+      "1": "counterClean",
+      "2": "benchClean",
+      "3": "clientTableClean",
+      "4": "chalkboardClean",
+      "5": "tasksCheck",
+      "6": "consumablesCheck",
+      "7": "paymentsCheck",
+      "8": "badgeCheck",
+      "9": "whatsappCheck",
+      "10": "phonesVolume",
+      "11": "advertisingMaterials",
+      "12": "towelsCheck"
+    }
+  },
+  "eveningH_EP1": {
+    "tableName": "EveningHeadEP1Checklist",
+    "columns": {
+      "1": "tasksCheck",
+      "2": "productsAvailability",
+      "3": "showcaseCheck",
+      "4": "onlinePayments",
+      "5": "completedOrdersCheck"
+    }
+  },
+  "eveningH_EP2": {
+    "tableName": "EveningHeadEP2Checklist",
+    "columns": {
+      "1": "tasksCheck",
+      "2": "productsAvailability",
+      "3": "showcaseCheck",
+      "4": "onlinePayments",
+      "5": "completedOrdersCheck"
+    }
+  },
+  "eveningH_EP3": {
+    "tableName": "EveningHeadEP3Checklist",
+    "columns": {
+      "1": "tasksCheck",
+      "2": "productsAvailability",
+      "3": "showcaseCheck",
+      "4": "onlinePayments"
+    }
+  },
+  "eveningH_EP4": {
+    "tableName": "EveningHeadEP4Checklist",
+    "columns": {
+      "1": "tasksCheck",
+      "2": "productsAvailability",
+      "3": "showcaseCheck",
+      "4": "onlinePayments"
+    }
+  },
+  "eveningH_EP5": {
+    "tableName": "EveningHeadEP5Checklist",
+    "columns": {
+      "1": "tasksCheck",
+      "2": "productsAvailability",
+      "3": "showcaseCheck",
+      "4": "onlinePayments"
+    }
+  },
+  "eveningO_EP1": {
+    "tableName": "EveningOperatorEP1Checklist",
+    "columns": {
+      "1": "onlinePayments",
+      "2": "tasksCheck",
+      "3": "tvOff",
+      "4": "windowsCheck",
+      "5": "conditionerOff",
+      "6": "phonesCharging",
+      "7": "bigovshikCheck",
+      "8": "consumablesOrder",
+      "9": "kitchenClean"
+    }
+  },
+  "eveningO_EP2": {
+    "tableName": "EveningOperatorEP2Checklist",
+    "columns": {
+      "1": "onlinePayments",
+      "2": "tasksCheck",
+      "3": "windowsCheck",
+      "4": "conditionerOff",
+      "5": "phonesCharging",
+      "6": "bigovshikCheck",
+      "7": "workplaceClean",
+      "8": "humidifierCheck",
+      "9": "kitchenClean"
+    }
+  },
+  "eveningO_EP3": {
+    "tableName": "EveningOperatorEP3Checklist",
+    "columns": {
+      "1": "onlinePayments",
+      "2": "tasksCheck",
+      "3": "windowsShuttersCheck",
+      "4": "printerTraysFilled",
+      "5": "cashlessReceiptsCheck",
+      "6": "phonesCharging",
+      "7": "bigovshikCheck",
+      "8": "workplaceClean",
+      "9": "kitchenClean",
+      "10": "conditionerOff"
+    }
+  },
+  "eveningO_EP4": {
+    "tableName": "EveningOperatorEP4Checklist",
+    "columns": {
+      "1": "onlinePayments",
+      "2": "tasksCheck",
+      "3": "phonesCharging",
+      "4": "bigovshikCheck",
+      "5": "workplaceClean",
+      "6": "kitchenClean",
+      "7": "conditionerOff"
+    }
+  },
+  "eveningO_EP5": {
+    "tableName": "EveningOperatorEP5Checklist",
+    "columns": {
+      "1": "onlinePayments",
+      "2": "tasksCheck",
+      "3": "windowsCheck",
+      "4": "phonesCharging",
+      "5": "bigovshikCheck",
+      "6": "workplaceClean",
+      "7": "chalkboardClean",
+      "8": "kitchenClean",
+      "9": "conditionerOff"
+    }
+  }
+}
