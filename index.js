@@ -6,7 +6,7 @@ const sql = require('mssql');
 
 const bot = new Bot(process.env.BOT_API_KEY);
 
-const adminID = 192403374;
+const adminID = process.env.ADMIN_ID;
 
 const morning_EP1 = require('./json_qs/morning_EP1.json');
 const eveningH_EP1 = require('./json_qs/eveningH_EP1.json');
@@ -30,7 +30,7 @@ const eveningO_EP5 = require('./json_qs/eveningO_EP5.json');
 
 const config = {
     user: 'sa',
-    password: '12345678sL',
+    password: process.env.SQL_PASSWORD,
     server: 'localhost',
     database: 'DemoTest',
     port: 1433,
