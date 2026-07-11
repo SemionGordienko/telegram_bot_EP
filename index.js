@@ -3,10 +3,13 @@ const checklistDbMap = require('./dbMap.json');
 
 const { Bot, GrammyError, HttpError, InlineKeyboard, session } = require('grammy');
 const sql = require('mssql');
+const fs = require('fs/promises');
+const path = require('path');
 
 const bot = new Bot(process.env.BOT_API_KEY);
 
 const adminID = process.env.ADMIN_ID;
+const CHECKLIST_UPLOADS_DIR = process.env.CHECKLIST_UPLOADS_DIR || 'uploads/checklists';
 
 const morning_EP1 = require('./json_qs/morning_EP1.json');
 const eveningH_EP1 = require('./json_qs/eveningH_EP1.json');
@@ -85,12 +88,73 @@ function getAnswerByQuestionId(currentForm, answers, questionId) {
     return answers[questionIndex] || 'Нет ответа';
 }
 
+function getChecklistDateFolderName() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+async function saveTelegramPhotoLocally(ctx, fileId, checklistId, index, dateFolder) {
+    const relativeChecklistDir = path
+        .join(CHECKLIST_UPLOADS_DIR, dateFolder, String(checklistId))
+        .replaceAll('\\', '/');
+
+    const absoluteChecklistDir = path.resolve(__dirname, relativeChecklistDir);
+
+    await fs.mkdir(absoluteChecklistDir, { recursive: true });
+
+    const file = await ctx.api.getFile(fileId);
+
+    if (!file.file_path) {
+        throw new Error(`Не удалось получить file_path для фото ${fileId}`);
+    }
+
+    const extension = path.extname(file.file_path) || '.jpg';
+    const fileName = `${index}${extension}`;
+    const absoluteFilePath = path.join(absoluteChecklistDir, fileName);
+
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_API_KEY}/${file.file_path}`;
+    const response = await fetch(fileUrl);
+
+    if (!response.ok) {
+        throw new Error(`Ошибка скачивания фото: ${response.status} ${response.statusText}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    await fs.writeFile(absoluteFilePath, buffer);
+
+    return relativeChecklistDir;
+}
+
+async function saveChecklistPhotosLocally(ctx, checklistId, dateFolder) {
+    const photos = ctx.session.photos || [];
+
+    if (!photos.length) {
+        return null;
+    }
+
+    let checklistFolderPath = null;
+
+    for (let i = 0; i < photos.length; i += 1) {
+        checklistFolderPath = await saveTelegramPhotoLocally(
+            ctx,
+            photos[i],
+            checklistId,
+            i + 1,
+            dateFolder
+        );
+    }
+
+    return checklistFolderPath;
+}
+
 async function saveChecklistToDb(ctx) {
     const currentForm = ctx.session.currentForm;
     const answers = ctx.session.answers;
     const formKey = ctx.session.formKey;
 
     const dbConfig = checklistDbMap[formKey];
+    const checklistDate = new Date().toLocaleDateString('ru-RU');
+    const dateFolder = getChecklistDateFolderName();
 
     if (!dbConfig) {
         throw new Error(`Не найден конфиг БД для анкеты: ${formKey}`);
@@ -101,7 +165,7 @@ async function saveChecklistToDb(ctx) {
     const checklistRequest = pool.request();
 
     checklistRequest.input('name', sql.NVarChar(100), ctx.session.name);
-    checklistRequest.input('date', sql.NVarChar(50), new Date().toLocaleDateString('ru-RU'));
+    checklistRequest.input('date', sql.NVarChar(50), checklistDate);
     checklistRequest.input('officeName', sql.NVarChar(50), ctx.session.officeName);
     checklistRequest.input('checklistName', sql.NVarChar(100), ctx.session.checklistName);
     checklistRequest.input('formKey', sql.NVarChar(50), formKey);
@@ -125,6 +189,21 @@ async function saveChecklistToDb(ctx) {
     `);
 
     const checklistId = checklistResult.recordset[0].id;
+
+    const checklistFolderPath = await saveChecklistPhotosLocally(ctx, checklistId, dateFolder);
+
+    if (checklistFolderPath) {
+        const pathRequest = pool.request();
+
+        pathRequest.input('checklistId', sql.Int, checklistId);
+        pathRequest.input('checklistFolderPath', sql.NVarChar(500), checklistFolderPath);
+
+        await pathRequest.query(`
+            UPDATE Checklists
+            SET checklistFolderPath = @checklistFolderPath
+            WHERE id = @checklistId
+        `);
+    }
 
     const answersRequest = pool.request();
 
@@ -248,7 +327,7 @@ bot.callbackQuery(/^form_/, async (ctx) => {
 
     if (formKey.startsWith('morning_')) {
         ctx.session.checklistName = 'Утренняя анкета';
-    }   
+    }
 
     if (formKey.startsWith('eveningH_')) {
         ctx.session.checklistName = 'Вечерняя анкета рук.ф';
@@ -430,6 +509,7 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
             ctx.from.id,
             `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n\n${text}`
         );
+
         await bot.api.sendMessage(
             adminID,
             `Заполнил(а): ${ctx.session.name}\n${ctx.session.officeName}, ${ctx.session.checklistName}\n`
