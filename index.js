@@ -34,12 +34,17 @@ const eveningO_EP5 = require('./json_qs/eveningO_EP5.json');
 const config = {
     user: 'sa',
     password: process.env.SQL_PASSWORD,
-    server: 'localhost',
-    database: 'DemoTest',
+    server: '127.0.0.1',
+    database: process.env.SQL_DATABASE || 'ChecklistBD',
     port: 1433,
+
+    connectionTimeout: 30000,
+    requestTimeout: 30000,
+
     options: {
         encrypt: false,
         trustServerCertificate: true,
+        enableArithAbort: true,
     },
 };
 
