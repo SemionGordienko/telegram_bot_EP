@@ -428,7 +428,7 @@ bot.callbackQuery(/^answer_/, async (ctx) => {
 
     if (ctx.session.step >= currentForm.questions.length) {
         ctx.session.waitingPhoto = true;
-        await ctx.reply('Вопросы завершены. Приложи фото результатов, без текста');
+        await ctx.reply('Вопросы завершены. Приложи фото офиса и/или скрины почты и мессенджеров, без текста');
         return;
     }
 
