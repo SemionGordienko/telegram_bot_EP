@@ -528,7 +528,7 @@ bot.callbackQuery(/^photo_/, async (ctx) => {
             return;
         }
 
-        await ctx.reply('Анкета завершена!');
+        await ctx.reply('Чек-лист заполнен!');
 
         ctx.session.step = null;
         ctx.session.currentForm = null;
